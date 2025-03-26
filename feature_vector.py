@@ -58,18 +58,15 @@ image_features = {file:extract_image_features(file) for file in ss_files}
 
 combined_features = {}
 
-for file in text.keys():  # Ensure we're processing only available files
-    text_vec = text_feature_dict.get(file, np.zeros(384))  # Default to zeros if missing
-    img_file = f"screenshots/{file.replace('.html', '.png')}"  # Find corresponding image
-    img_vec = image_features.get(img_file, np.zeros(2048))  # Default to zeros if missing
+for file in text.keys():  
+    text_vec = text_feature_dict.get(file, np.zeros(384))  
+    img_file = f"screenshots/{file.replace('.html', '.png')}"  
+    img_vec = image_features.get(img_file, np.zeros(2048)) 
     
-    combined_features[file] = np.concatenate([img_vec])  # Merge vectors
+    combined_features[file] = np.concatenate([img_vec]) 
 
-import pandas as pd
-# Convert dictionary to DataFrame
 df = pd.DataFrame.from_dict(combined_features, orient="index")
 
-# Save to CSV
 df.to_csv("combined_features.csv", index=True, header=False)
 
 print("✅ Features saved to combined_features.csv")
