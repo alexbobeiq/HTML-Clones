@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import glob
-import torch
+import string
 import torchvision.transforms as transforms
 from torchvision import models
 from PIL import Image
@@ -21,53 +21,46 @@ tier2_files = glob.glob(os.path.join(TIER2, "*.html"))
 tier3_files = glob.glob(os.path.join(TIER3, "*.html"))
 tier4_files = glob.glob(os.path.join(TIER4, "*.html"))
 
-tier1_files = glob.glob(os.path.join(TIER1, "*.html"))
-tier2_files = glob.glob(os.path.join(TIER2, "*.html"))
-tier3_files = glob.glob(os.path.join(TIER3, "*.html"))
-tier4_files = glob.glob(os.path.join(TIER4, "*.html"))
 
-text = {file: extract_text(file) for file in tier2_files}
+def preprocess_text(text):
+    """Lowercases, removes punctuation, and splits text into words."""
+    text = text.lower().translate(str.maketrans("", "", string.punctuation))
+    return text.split()
 
-vectorizer = TfidfVectorizer(max_features=500)
-text_features = vectorizer.fit_transform(text.values())
+def build_vocab(data):
+    vocabulary = set()
+    for text_in_site in data.values():
+        words = preprocess_text(text_in_site)
+        vocabulary.update(words)
 
-text_features = text_features.toarray()
-text_feature_dict = {file: text_features[i] for i, file in enumerate(text.keys())}
+    return sorted(vocabulary)
 
+def bow(data, vocab):
+    matrix = {}
+    for index, text in data.items():
+        words = preprocess_text(text)
+        matrix_row = [words.count(word) for word in vocab]
+        matrix[index] = matrix_row
+    return matrix
 
-model = models.resnet50(pretrained = True)
-model = torch.nn.Sequential(*(list(model.children())[:-1]))
-model.eval()
+text = {file: extract_text(file) for file in tier3_files}
 
-transform = transforms.Compose([
-    transforms.Resize((1200,900)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-])
+vocab = build_vocab(text)
+bow = bow(text, vocab)
+print(bow)
 
-def extract_image_features(path):
-    img = Image.open(path).convert("RGB")
-    img = transform(img).unsqueeze(0)
-    with torch.no_grad():
-        features = model(img)
-    return features.squeeze().numpy()
-
-ss_files = glob.glob("screenshots/*.png")
-image_features = {file:extract_image_features(file) for file in ss_files}
-
-
-combined_features = {}
-
-for file in text.keys():  
-    text_vec = text_feature_dict.get(file, np.zeros(384))  
-    img_file = f"screenshots/{file.replace('.html', '.png')}"  
-    img_vec = image_features.get(img_file, np.zeros(2048)) 
-    
-    combined_features[file] = np.concatenate([img_vec]) 
-
-df = pd.DataFrame.from_dict(combined_features, orient="index")
+df = pd.DataFrame.from_dict(bow, orient="index")
 
 df.to_csv("combined_features.csv", index=True, header=False)
 
 print("✅ Features saved to combined_features.csv")
+
+
+ 
+
+""" df = pd.DataFrame.from_dict(combined_features, orient="index")
+
+df.to_csv("combined_features.csv", index=True, header=False)
+
+print("✅ Features saved to combined_features.csv") """
 

@@ -1,5 +1,6 @@
 import os
 import glob
+import re
 from bs4 import BeautifulSoup
 
 
@@ -21,7 +22,8 @@ def extract_text(path):
         html = file.read()
 
     soup = BeautifulSoup(html, "html.parser")
-    elements = soup.find_all(["p", "h1", "h2", "h3", "h4", "h5", "li"])
-    text = " ".join([el.get_text() for el in elements])
+    text = soup.get_text()
+    text = re.sub(r'^https?:\/\/.*[\r\n]*', '', text, flags=re.MULTILINE)
+    #text = text.replace('\n', ' ').replace('\r', '')
 
     return text.strip()

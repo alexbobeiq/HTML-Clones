@@ -46,5 +46,5 @@ def screenshots_for_tiers(directory):
         take_screenshot(url, filename)
 
 
-screenshots_for_tiers(tier2_files)
+screenshots_for_tiers(tier3_files)
 
