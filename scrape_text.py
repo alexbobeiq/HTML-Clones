@@ -24,6 +24,6 @@ def extract_text(path):
     soup = BeautifulSoup(html, "html.parser")
     text = soup.get_text()
     text = re.sub(r'^https?:\/\/.*[\r\n]*', '', text, flags=re.MULTILINE)
-    #text = text.replace('\n', ' ').replace('\r', '')
+    text = text.replace('\n', ' ').replace('\r', '')
 
     return text.strip()
