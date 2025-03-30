@@ -4,11 +4,10 @@ import pandas as pd
 import glob
 import string
 import numpy as np
+from skimage.feature import local_binary_pattern
 from scrape_text import extract_text
+from scrape_screenshots import screenshots_for_tiers
 from sklearn.feature_extraction.text import TfidfVectorizer
-
-SCREENSHOT_DIR = "screenshots"
-os.makedirs(SCREENSHOT_DIR, exist_ok=True)
 
 TIER1 = "clones/tier1"
 TIER2 = "clones/tier2"
@@ -20,64 +19,72 @@ tier2_files = glob.glob(os.path.join(TIER2, "*.html"))
 tier3_files = glob.glob(os.path.join(TIER3, "*.html"))
 tier4_files = glob.glob(os.path.join(TIER4, "*.html"))
 
-# --- TEXTUAL FEATURE EXTRACTION ---
+# Extragere Features folosind metoda TF_IDF
 
 def preprocess_text(text):
-    """Lowercases, removes punctuation, and splits text into words."""
-    text = text.lower().translate(str.maketrans("", "", string.punctuation))
-    return text.split()
+    """Lowercases and removes punctuation from text."""
+    return text.lower().translate(str.maketrans("", "", string.punctuation))
 
-def build_vocab(data):
-    """Build vocabulary from text content."""
-    vocabulary = set()
-    for text_in_site in data.values():
-        words = preprocess_text(text_in_site)
-        vocabulary.update(words)
-    return sorted(vocabulary)
+def extract_tfidf_features(data):
+    """Extracts TF-IDF features from text content."""
+    vectorizer = TfidfVectorizer(stop_words='english', max_features=1000)
+    tfidf_matrix = vectorizer.fit_transform(data.values())
+    return {key: tfidf_matrix[i].toarray()[0] for i, key in enumerate(data.keys())}
 
-def bow(data, vocab):
-    """Create Bag-of-Words (BoW) representation for text."""
-    matrix = {}
-    for index, text in data.items():
-        words = preprocess_text(text)
-        matrix_row = [words.count(word) for word in vocab]
-        matrix[index] = matrix_row
-    return matrix
+# Extragere features folosind histogram LBP
 
-text = {file: extract_text(file) for file in tier3_files}
-vocab = build_vocab(text)
-bow = bow(text, vocab)
-
-# --- TEXTURE FEATURE EXTRACTION WITH ORB ---
-
-def orb_descriptor_histogram(image):
-    """Extracts ORB descriptors and creates a histogram of feature descriptors."""
-    orb = cv2.ORB_create(nfeatures=500)  # Limit features for efficiency
-    keypoints, descriptors = orb.detectAndCompute(image, None)
-    
-    if descriptors is None:  
-        return np.zeros(32)  # If no descriptors found, return zero vector
-    
-    hist, _ = np.histogram(descriptors.ravel(), bins=32, range=(0, 256), density=True)
+def lbp_histogram(image, num_points=24, radius=3, bins=32):
+    """Extracts Local Binary Pattern (LBP) histogram."""
+    lbp = local_binary_pattern(image, num_points, radius, method="uniform")
+    hist, _ = np.histogram(lbp.ravel(), bins=bins, range=(0, bins), density=True)
     return hist
 
-screenshots = glob.glob(os.path.join(SCREENSHOT_DIR, "*.png"))
-texture_features = {}
 
-for screenshot in screenshots:
-    image = cv2.imread(screenshot, cv2.IMREAD_GRAYSCALE)
-    histo = orb_descriptor_histogram(image)
-    
-    # Convert screenshot filename to corresponding HTML path
-    texture_features["clones/tier3\\" + os.path.basename(screenshot).replace("_", ".").replace(".png", ".html")] = histo
+def extract_features(file):
+    if file == 1:
+        SCREENSHOT_DIR = "screenshots1"
+        tier = tier1_files
+        path = "clones/tier1\\"
+    elif file == 2:
+        SCREENSHOT_DIR = "screenshots2"
+        tier = tier2_files
+        path = "clones/tier2\\"
+    elif file == 3:
+        SCREENSHOT_DIR = "screenshots3"
+        tier = tier3_files
+        path = "clones/tier3\\"
+    elif file == 4:
+        SCREENSHOT_DIR = "screenshots4"
+        tier = tier4_files
+        path = "clones/tier4\\"
+        
+    text = {file: extract_text(file) for file in tier}
 
-# --- COMBINE TEXTUAL AND TEXTURE FEATURES ---
+    #daca nu exista fisier se creaza
+    if (not os.path.isdir(SCREENSHOT_DIR)) or not os.listdir(SCREENSHOT_DIR):
+        os.makedirs(SCREENSHOT_DIR, exist_ok=True)
+        screenshots_for_tiers(tier)
 
-common_keys = set(bow.keys()) & set(texture_features.keys())
-combined_features = {key: np.concatenate((bow[key], texture_features[key])) for key in common_keys}
+    tfidf_features = extract_tfidf_features(text)
 
-# Save to CSV
-df = pd.DataFrame.from_dict(combined_features, orient="index")
-df.to_csv("combined_features3.csv", index=True, header=False)
+    screenshots = glob.glob(os.path.join(SCREENSHOT_DIR, "*.png"))
+    texture_features = {}
 
-print("✅ Features saved to combined_features3.csv")
+    for screenshot in screenshots:
+        image = cv2.imread(screenshot, cv2.IMREAD_GRAYSCALE)
+        histo = lbp_histogram(image)
+        
+        texture_features[path + os.path.basename(screenshot).replace("_", ".").replace(".png", ".html")] = histo # cheia este calea catre documetul html
+
+    # se combina datele texuale cu cele ce provin de la imagini
+    common_keys = set(tfidf_features.keys()) & set(texture_features.keys())
+    combined_features = {key: np.concatenate((tfidf_features[key], texture_features[key])) for key in common_keys}
+
+    df = pd.DataFrame.from_dict(combined_features, orient="index")
+    shape_text = len(next(iter(tfidf_features.values())))
+    shape_img = len(next(iter(texture_features.values())))
+
+    df.to_csv("combined_features.csv", index=True, header=False)
+
+    print("✅ Features saved to combined_features4.csv")
+    return shape_text, shape_img
